@@ -1,9 +1,17 @@
-from fastapi import FastAPI, HTTPException, Depends
+import os
+from fastapi import FastAPI, HTTPException, Depends, Security
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security.api_key import APIKeyHeader
+from starlette.status import HTTP_403_FORBIDDEN
 from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from datetime import datetime, timezone
+
+API_KEY = os.getenv("ARMORIQ_SECRET", "default_fallback_key_for_local_only")
+API_KEY_NAME = "access_token"
+
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
 # Database Configuration
 SQLALCHEMY_DATABASE_URL = "sqlite:///./banking.db"
@@ -11,6 +19,13 @@ engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={
                        "check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+async def get_api_key(api_key_header: str = Security(api_key_header)):
+    if api_key_header == API_KEY:
+        return api_key_header
+    raise HTTPException(
+        status_code=HTTP_403_FORBIDDEN, detail="Could not validate credentials"
+    )
 
 # --- Models ---
 
@@ -33,7 +48,7 @@ class Transaction(Base):
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="ArmorIQ MCP Banking Server")
+app = FastAPI(title="ArmorIQ MCP Banking Server", dependencies=[Depends(get_api_key)])
 
 origins = [
     "http://127.0.0.1:8000/",
